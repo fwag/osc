@@ -1,0 +1,85 @@
+version: "1"
+
+# Orchestrator execution options
+orchestrator:
+  max_iterations: 1
+  prompt_file: ".sandai/prompt.md"
+  worktree_dir: ".sandai/worktree"
+  afk: true # Set to false to trigger Interactive TTY sessions
+
+# Agent specification
+agent:
+  name: "gemini"
+  model: "gemini-2.5-pro"
+  # Commands used to invoke Gemini inside the Sandbox
+  command: "gemini"
+  interactive_command: "gemini"
+
+# Sandbox provider and isolation options
+sandbox:
+  provider: "podman" # Can toggle between "podman", "docker", or "none"
+  image: "localhost/ai-agents-sandbox-gemini:latest"
+  
+  # gVisor runtime override. 
+  # NOTE: To use gVisor, ensure 'runsc' is installed on your host system (e.g. 'sudo zypper install runsc' or equivalent)
+  # and registered in your /etc/containers/containers.conf. Un-comment the line below to enable deep kernel isolation:
+  # runtime: "runsc"
+
+  security:
+    cap_drop:
+      - ALL
+    no_new_privileges: true
+    userns: "keep-id" # Crucial for Podman rootless namespace owner mapping
+  mounts:
+    # Manual project volume mounts can be specified here.
+    # NOTE: Your local agent authentication credentials (e.g. ~/.gemini) are handled
+    # and mounted automatically into an isolated, secure, and writable sandbox folder.
+    # - host_path: "~/my-shared-project-docs"
+    #   sandbox_path: "/home/aiuser/docs"
+    #   read_only: true
+
+  # Outbound network security: a host-side HTTP CONNECT tunnelling proxy (no CA needed,
+  # filtering happens on the CONNECT hostname before TLS starts).
+  #
+  # See docs/adr/0004-network-egress-enforcement.md for why each piece is required.
+  network:
+    # enforcement: "strict" (default) drops the sandbox's own route to the internet, so a
+    # tool that ignores HTTP_PROXY loses network access instead of escaping the allowlist.
+    # Requires provider: podman. Use "advisory" to only set the proxy variables, which
+    # leaves the allowlist trivially bypassable.
+    enforcement: "strict"
+
+    # Gemini's google_web_search runs on Google's servers, so the pages behind the results
+    # are read by Google, not by the sandbox, and allow_domains cannot filter that. Turning
+    # it off narrows the agent's reach but does NOT make the allowlist airtight: see the
+    # note on relay hosts below. Default keeps the tool available.
+    # allow_web_search: false
+
+    # Keep this list as small as the work allows, and prefer exact hosts over parent
+    # domains: matching is by suffix, so "googleapis.com" admits every *.googleapis.com
+    # service, and "google.com" would admit news.google.com and translate.google.com.
+    #
+    # WARNING: some hosts fetch arbitrary third-party content on the caller's behalf and
+    # return it over their own connection. Allowlisting one grants read access to the web
+    # through it, and no hostname filter can see that happening. Measured: with a domain
+    # blocked, the agent reached its content through news.google.com's RSS feed.
+    allow_domains:
+      # Gemini via OAuth personal login. These three are the only hosts gemini-cli
+      # contacted across full runs.
+      - "oauth2.googleapis.com"                 # OAuth token exchange
+      - "cloudcode-pa.googleapis.com"           # Model requests
+      - "play.googleapis.com"                   # Device / telemetry checks
+
+      # Only needed when authenticating with GEMINI_API_KEY instead of OAuth.
+      # This endpoint serves urlContext: whatever can reach it can ask Google to fetch an
+      # arbitrary URL and hand back the contents, which allow_domains cannot filter.
+      # - "generativelanguage.googleapis.com"
+
+      # Project dependencies. Add only what your build actually needs.
+      - "github.com"
+      - "api.github.com"
+      - "registry.npmjs.org"
+      # proxy.golang.org resolves arbitrary module paths from arbitrary VCS hosts, so it
+      # relays repository content the same way. Include it only if you build Go code.
+      # - "proxy.golang.org"
+
