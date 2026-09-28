@@ -2,10 +2,18 @@ version: "1"
 
 # Orchestrator execution options
 orchestrator:
-  max_iterations: 1
+  max_iterations: 3
   prompt_file: ".sandai/prompt.md"
   worktree_dir: ".sandai/worktree"
   afk: true # Set to false to trigger Interactive TTY sessions
+  debug: true
+
+# Lifecycle hooks
+hooks:
+  after_run:
+    # Checks only Python files created or modified by the agent in this run, avoiding legacy code
+    command: "{ git diff --name-only \"${SANDAI_BASE_COMMIT:-master}\"; git ls-files --others --exclude-standard; } | grep '\\.py$' | sort -u | xargs -r ruff check"
+    allow_failure: false
 
 # Agent specification
 agent:
