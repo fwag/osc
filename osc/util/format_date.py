@@ -1,7 +1,5 @@
-import os
 
-
-def format_iso(dt):
+def format_iso(dt):  # type: ignore
     """Formats a datetime object into ISO 8601 format.
 
     :param dt: The datetime object.
