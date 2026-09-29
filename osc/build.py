@@ -1666,7 +1666,8 @@ def main(apiurl, store, opts, argv):
                 if config['build-initrd']:
                     vm_options += [f"--vm-initrd={config['build-initrd']}"]
 
-            build_root += '/.mount'
+            if vm_type != 'podman':
+                build_root += '/.mount'
         if vm_disk_size:
             vm_options += [f"--vmdisk-rootsize={vm_disk_size}"]
 
