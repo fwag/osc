@@ -31,7 +31,7 @@ sandbox:
   # gVisor runtime override. 
   # NOTE: To use gVisor, ensure 'runsc' is installed on your host system (e.g. 'sudo zypper install runsc' or equivalent)
   # and registered in your /etc/containers/containers.conf. Un-comment the line below to enable deep kernel isolation:
-  # runtime: "runsc"
+  runtime: "runsc"
 
   security:
     cap_drop:
