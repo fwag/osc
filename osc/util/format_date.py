@@ -1,0 +1,16 @@
+"""Date formatting utilities."""
+
+import os
+from datetime import datetime
+
+
+def format_iso(dt: datetime) -> str:
+    """Formats a datetime object into an ISO 8601 string.
+
+    Args:
+        dt: The datetime object to format.
+
+    Returns:
+        The ISO 8601 formatted string.
+    """
+    return dt.isoformat()
