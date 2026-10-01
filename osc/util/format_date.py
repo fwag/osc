@@ -1,6 +1,5 @@
 """Date formatting utilities."""
 
-import os
 from datetime import datetime
 
 
