@@ -91,3 +91,14 @@ sandbox:
       # relays repository content the same way. Include it only if you build Go code.
       # - "proxy.golang.org"
 
+
+      # SonarQube Code Quality & Security (https://cq.opensuse.org/)
+      - "cq.opensuse.org"
+      - "obs-admin.suse.de"
+
+# Dynamic verification and guardrail hooks
+hooks:
+  after_run:
+    # Runs automated code quality checks and fetches SonarQube feedback
+    command: "bash .sandai/hooks/sonar-check.sh"
+    allow_failure: false
