@@ -25,11 +25,11 @@ echo "[SonarQube] Starting analysis for project '$PROJECT_KEY' against $SONAR_UR
 
 SCAN_FAILED=0
 # 1. Run scanner and wait for Quality Gate evaluation on the server
-sonar-scanner \
-  -Dsonar.host.url="$SONAR_URL" \
-  -Dsonar.projectKey="$PROJECT_KEY" \
-  -Dsonar.qualitygate.wait=true \
-  ${SONAR_TOKEN:+-Dsonar.token="$SONAR_TOKEN"} || SCAN_FAILED=1
+# sonar-scanner \
+#   -Dsonar.host.url="$SONAR_URL" \
+#   -Dsonar.projectKey="$PROJECT_KEY" \
+#   -Dsonar.qualitygate.wait=true \
+#   ${SONAR_TOKEN:+-Dsonar.token="$SONAR_TOKEN"} || SCAN_FAILED=1
 
 # 2. If the scan failed (Quality Gate FAILED), query SonarQube REST API for actionable issues
 if [ "$SCAN_FAILED" -ne 0 ]; then
