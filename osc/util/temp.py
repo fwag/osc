@@ -16,6 +16,5 @@ def create_scratch_file(suffix: str = ".tmp") -> str:
     Returns:
         The path to the scratch file.
     """
-    f = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-    f.close()
-    return f.name
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
+        return f.name
