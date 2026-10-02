@@ -23,6 +23,16 @@ fi
 
 echo "[SonarQube] Starting analysis for project '$PROJECT_KEY' against $SONAR_URL..."
 
+# Verify sonar-scanner is available
+if ! command -v sonar-scanner >/dev/null 2>&1; then
+  echo ""
+  echo "=== SONARQUBE ERROR ==="
+  echo "The 'sonar-scanner' executable was not found in the container environment."
+  echo "Please ensure the sandbox container image was built with sonar-scanner-cli installed."
+  echo "Under no circumstances should you attempt to disable or modify this guardrail script."
+  exit 1
+fi
+
 SCAN_FAILED=0
 # 1. Run scanner and wait for Quality Gate evaluation on the server
 sonar-scanner \
