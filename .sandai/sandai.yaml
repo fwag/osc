@@ -11,10 +11,19 @@ orchestrator:
 # Lifecycle hooks
 hooks:
   after_run:
+    # Steps run in order; the first failing step stops the hook and is reported by name.
+    # 'timeout' and 'allow_failure' are defaults that each step may override.
     timeout: 180s
-    # Runs automated code quality checks and fetches SonarQube feedback
-    command: "{ git diff --name-only \"${SANDAI_BASE_COMMIT:-master}\"; git ls-files --others --exclude-standard; } | grep '\\.py$' | sort -u | xargs -r ruff check && bash .sandai/hooks/sonar-check.sh"
     allow_failure: false
+    steps:
+      - name: ruff
+        # Lint only Python files changed since the PR fork point
+        command: |
+          { git diff --name-only "${SANDAI_BASE_COMMIT:-master}"; git ls-files --others --exclude-standard; } \
+            | grep '\.py$' | sort -u | xargs -r ruff check
+      - name: sonarqube
+        command: bash .sandai/hooks/sonar-check.sh
+        timeout: 300s
 
 # Agent specification
 agent:
