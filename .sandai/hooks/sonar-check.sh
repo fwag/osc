@@ -68,14 +68,23 @@ if [ "$SCAN_FAILED" -ne 0 ]; then
       echo "Note: SONAR_TOKEN is not set in the environment. Please export SONAR_TOKEN to authenticate against ${SONAR_URL}."
     fi
   else
+    CHANGED_FILES=$({ git diff --name-only "${SANDAI_BASE_COMMIT:-master}" 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | sort -u | tr '\n' ',' | sed 's/,$//')
+
     echo "$API_RESP" | python3 -c '
 import sys, json
 
 try:
     data = json.load(sys.stdin)
     issues = data.get("issues", [])
+    changed_arg = sys.argv[1] if len(sys.argv) > 1 else ""
+    changed = set(filter(None, changed_arg.split(",")))
+    if changed:
+        matching = [iss for iss in issues if iss.get("component", "").split(":")[-1] in changed]
+        if matching:
+            issues = matching
+
     if not issues:
-        print("Quality Gate failed, but no specific code issues were returned via API.")
+        print("Quality Gate failed, but no specific code issues were returned via API for modified files.")
         print("Check server analysis status on SonarQube dashboard.")
     else:
         print(f"Found {len(issues)} open issue(s):")
@@ -88,7 +97,7 @@ try:
             print(f"{i}. [{sev}] {comp}:{line} - {msg} (Rule: {rule})")
 except Exception as e:
     print(f"Failed to parse SonarQube API response: {e}")
-'
+' "$CHANGED_FILES"
   fi
 
   echo ""
