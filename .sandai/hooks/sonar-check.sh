@@ -1,5 +1,16 @@
 #!/usr/bin/env bash
+# SonarQube guardrail scoped to the changes of the current sandai run.
+#
+# Usage:
+#   sonar-check.sh baseline   Analyze the unmodified fork point (run once per run, before the agent commits)
+#   sonar-check.sh            Analyze the agent's changes and enforce the server Quality Gate on them
+#
+# The project's new code definition must be "Previous version". The baseline analysis is tagged with
+# one version and every check with another, so the gate's new code period always starts at the
+# baseline: only lines committed after it (the agent's commits) count as new code.
 set -eo pipefail
+
+MODE="${1:-check}"
 
 # Configuration
 SONAR_URL="${SONAR_HOST_URL:-}"
@@ -29,7 +40,15 @@ if [ -z "$PROJECT_KEY" ]; then
   PROJECT_KEY=$(basename "$PWD")
 fi
 
-echo "[SonarQube] Starting analysis for project '$PROJECT_KEY' against $SONAR_URL..."
+BASE_COMMIT="${SANDAI_BASE_COMMIT:-$(git rev-parse HEAD)}"
+BASE_SHORT="${BASE_COMMIT:0:12}"
+if [ "$MODE" = "baseline" ]; then
+  VERSION="base-$BASE_SHORT"
+else
+  VERSION="change-$BASE_SHORT"
+fi
+
+echo "[SonarQube] Running $MODE analysis for project '$PROJECT_KEY' (version $VERSION) against $SONAR_URL..."
 
 # Verify sonar-scanner is available
 if ! command -v sonar-scanner >/dev/null 2>&1; then
@@ -41,106 +60,88 @@ if ! command -v sonar-scanner >/dev/null 2>&1; then
   exit 1
 fi
 
-BASE_COMMIT="${SANDAI_BASE_COMMIT:-master}"
-# Issues created by this analysis carry the scanner-side analysis date, so a local timestamp is consistent
-SCAN_START=$(date -u +%Y-%m-%dT%H:%M:%S+0000)
 SCAN_LOG=$(mktemp)
 trap 'rm -f "$SCAN_LOG"' EXIT
 
-# 1. Run scanner and wait for server-side processing. SCM exclusions stay enabled so that
-#    gitignored/untracked files (no blame data) are not indexed and misreported as new code.
+# SCM exclusions stay enabled so gitignored/untracked files (no blame data) are not indexed.
+# Scanner output is only shown when the scan itself fails.
 SCAN_RC=0
 sonar-scanner \
   -Dsonar.host.url="$SONAR_URL" \
   -Dsonar.projectKey="$PROJECT_KEY" \
-  -Dsonar.qualitygate.wait=true \
+  -Dsonar.projectVersion="$VERSION" \
+  -Dsonar.qualitygate.wait="$([ "$MODE" = "baseline" ] && echo false || echo true)" \
   -Dsonar.exclusions="$EXCLUSIONS" \
-  ${SONAR_TOKEN:+-Dsonar.token="$SONAR_TOKEN"} 2>&1 | tee "$SCAN_LOG" || SCAN_RC=$?
+  ${SONAR_TOKEN:+-Dsonar.token="$SONAR_TOKEN"} >"$SCAN_LOG" 2>&1 || SCAN_RC=$?
 
-# A failing server Quality Gate is expected on legacy code; anything else is a real scanner error
-if [ "$SCAN_RC" -ne 0 ] && ! grep -q "QUALITY GATE STATUS: FAILED" "$SCAN_LOG"; then
+if [ "$MODE" = "baseline" ]; then
+  if [ "$SCAN_RC" -ne 0 ]; then
+    cat "$SCAN_LOG"
+    echo "=== SONARQUBE BASELINE ERROR === sonar-scanner exited with code $SCAN_RC."
+    exit 1
+  fi
+  echo "[SonarQube] Baseline analysis of $BASE_SHORT uploaded."
+  exit 0
+fi
+
+if [ "$SCAN_RC" -eq 0 ]; then
+  echo "[SonarQube] Quality Gate passed on the code changed since $BASE_SHORT."
+  exit 0
+fi
+
+if ! grep -q "QUALITY GATE STATUS: FAILED" "$SCAN_LOG"; then
+  cat "$SCAN_LOG"
   echo ""
   echo "=== SONARQUBE SCANNER ERROR ==="
   echo "sonar-scanner exited with code $SCAN_RC before a Quality Gate verdict was produced. See output above."
   exit 1
 fi
 
-# 2. Gate locally on issues attributable to this change: issues created by this analysis,
-#    or issues located on lines added/modified since $BASE_COMMIT. Pre-existing issues are ignored.
-set +e
-python3 - "$SONAR_URL" "$PROJECT_KEY" "$BASE_COMMIT" "$SCAN_START" <<'PY'
-import json, os, re, ssl, subprocess, sys, urllib.parse, urllib.request
-from datetime import datetime
+# Quality Gate failed: report the failed conditions and the new-code issues
+python3 - "$SONAR_URL" "$PROJECT_KEY" "$BASE_SHORT" <<'PY'
+import json, os, ssl, sys, urllib.parse, urllib.request
 
-sonar_url, project_key, base_commit, scan_start = sys.argv[1:5]
+sonar_url, project_key, base_short = sys.argv[1:4]
 token = os.environ.get("SONAR_TOKEN", "")
 ctx = ssl._create_unverified_context()
 
-def git(*args):
-    return subprocess.run(["git", *args], capture_output=True, text=True).stdout
-
-def search(**params):
-    issues, page = [], 1
-    while True:
-        query = urllib.parse.urlencode({"componentKeys": project_key, "resolved": "false", "ps": 500, "p": page, **params})
-        req = urllib.request.Request(f"{sonar_url}/api/issues/search?{query}")
-        if token:
-            req.add_header("Authorization", f"Bearer {token}")
-        data = json.load(urllib.request.urlopen(req, context=ctx, timeout=60))
-        issues += data.get("issues", [])
-        if page * 500 >= min(data.get("paging", {}).get("total", 0), 10000):
-            return issues
-        page += 1
-
-# Map each changed file to the set of changed line numbers (None = whole file is new)
-changed = {f: None for f in git("ls-files", "--others", "--exclude-standard").split()}
-current = None
-for line in git("diff", "-U0", "--no-color", "--no-renames", base_commit).splitlines():
-    if line.startswith("+++ "):
-        current = line[6:] if line.startswith("+++ b/") else None
-        if current:
-            changed.setdefault(current, set())
-    elif line.startswith("@@") and current and changed[current] is not None:
-        m = re.match(r"@@ -\S+ \+(\d+)(?:,(\d+))? @@", line)
-        start, count = int(m.group(1)), int(m.group(2) or 1)
-        changed[current].update(range(start, start + count))
-
-try:
-    found = {i["key"]: i for i in search(createdAfter=scan_start)}
-    for path in changed:
-        for i in search(componentKeys=f"{project_key}:{path}"):
-            lines = changed[path]
-            if lines is None or i.get("line") in lines:
-                found[i["key"]] = i
-except Exception as e:
-    print(f"Failed to query SonarQube issues API: {e}")
-    if not token:
-        print(f"Note: SONAR_TOKEN is not set in the environment. Please export SONAR_TOKEN to authenticate against {sonar_url}.")
-    sys.exit(1)
-
-if not found:
-    print("[SonarQube] No new issues on code changed since base commit "
-          f"{base_commit[:12]} (pre-existing issues in unchanged code are ignored).")
-    sys.exit(0)
+def get_json(path, **params):
+    req = urllib.request.Request(f"{sonar_url}{path}?{urllib.parse.urlencode(params)}")
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
+    return json.load(urllib.request.urlopen(req, context=ctx, timeout=60))
 
 print("")
 print("=== SONARQUBE QUALITY GATE FAILED ===")
-print(f"Found {len(found)} issue(s) introduced by your changes:")
-for n, i in enumerate(sorted(found.values(), key=lambda i: (i.get("component", ""), i.get("line", 0))), 1):
-    comp = i.get("component", "").split(":", 1)[-1]
-    print(f"{n}. [{i.get('severity', 'INFO')}] {comp}:{i.get('line', 1)} - {i.get('message', 'No description')} (Rule: {i.get('rule', '')})")
-sys.exit(2)
+print(f"The Quality Gate is evaluated only on code changed since base commit {base_short}.")
+try:
+    status = get_json("/api/qualitygates/project_status", projectKey=project_key)["projectStatus"]
+    print("Failed conditions:")
+    for c in status.get("conditions", []):
+        if c.get("status") == "ERROR":
+            op = "<" if c.get("comparator") == "LT" else ">"
+            print(f"  - {c['metricKey']} = {c.get('actualValue')} (required: not {op} {c.get('errorThreshold')})")
+
+    issues = []
+    page = 1
+    while True:
+        data = get_json("/api/issues/search", componentKeys=project_key, inNewCodePeriod="true",
+                        resolved="false", ps=500, p=page)
+        issues += data.get("issues", [])
+        if page * 500 >= min(data.get("paging", {}).get("total", 0), 10000):
+            break
+        page += 1
+except Exception as e:
+    print(f"Failed to query SonarQube API: {e}")
+    sys.exit(0)
+
+if issues:
+    print(f"New issues ({len(issues)}):")
+    for n, i in enumerate(sorted(issues, key=lambda i: (i.get("component", ""), i.get("line", 0))), 1):
+        comp = i.get("component", "").split(":", 1)[-1]
+        print(f"{n}. [{i.get('severity', 'INFO')}] {comp}:{i.get('line', 1)} - {i.get('message', 'No description')} (Rule: {i.get('rule', '')})")
 PY
-GATE_RC=$?
-set -eo pipefail
 
-if [ "$GATE_RC" -eq 2 ]; then
-  echo ""
-  echo "Please apply the necessary code changes to fix the issues listed above."
-  exit 1
-elif [ "$GATE_RC" -ne 0 ]; then
-  exit 1
-fi
-
-echo "[SonarQube] Quality Gate passed successfully."
-exit 0
+echo ""
+echo "Please apply the necessary code changes to fix the problems listed above."
+exit 1

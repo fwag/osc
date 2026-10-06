@@ -10,6 +10,13 @@ orchestrator:
 
 # Lifecycle hooks
 hooks:
+  on_sync_in:
+    # Analyze the unmodified fork point once per run, before the agent commits anything, so the
+    # SonarQube Quality Gate in after_run only evaluates the agent's changes
+    timeout: 300s
+    steps:
+      - name: sonarqube-baseline
+        command: bash .sandai/hooks/sonar-check.sh baseline
   after_run:
     # Steps run in order; the first failing step stops the hook and is reported by name.
     # 'timeout' and 'allow_failure' are defaults that each step may override.
@@ -42,6 +49,10 @@ sandbox:
   # NOTE: To use gVisor, ensure 'runsc' is installed on your host system (e.g. 'sudo zypper install runsc' or equivalent)
   # and registered in your /etc/containers/containers.conf. Un-comment the line below to enable deep kernel isolation:
   runtime: "runsc"
+
+  env:
+    # Dedicated SonarQube project so agent analyses never touch the real 'osc' project
+    SONAR_PROJECT_KEY: "osc-sandai"
 
   security:
     cap_drop:
