@@ -39,6 +39,7 @@ sonar-scanner \
   -Dsonar.host.url="$SONAR_URL" \
   -Dsonar.projectKey="$PROJECT_KEY" \
   -Dsonar.qualitygate.wait=true \
+  -Dsonar.scm.exclusions.disabled=true \
   ${SONAR_TOKEN:+-Dsonar.token="$SONAR_TOKEN"} || SCAN_FAILED=1
 
 # 2. If the scan failed (Quality Gate FAILED), query SonarQube REST API for actionable issues
