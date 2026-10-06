@@ -1,6 +1,5 @@
 """Date formatting utilities."""
 
-import os
 from datetime import datetime
 
 def format_iso(dt: datetime) -> str:
