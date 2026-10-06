@@ -17,6 +17,7 @@ fi
 
 # Fallback defaults
 SONAR_URL="${SONAR_URL:-https://cq.opensuse.org}"
+SONAR_URL="${SONAR_URL%/}"
 if [ -z "$PROJECT_KEY" ]; then
   PROJECT_KEY=$(basename "$PWD")
 fi
@@ -61,7 +62,13 @@ if [ "$SCAN_FAILED" -ne 0 ]; then
     API_RESP=$(curl -s -k $AUTH_HEADER "${SONAR_URL}/api/issues/search?componentKeys=${PROJECT_KEY}&resolved=false&ps=30" || true)
   fi
 
-  echo "$API_RESP" | python3 -c '
+  if [ -z "$API_RESP" ]; then
+    echo "Warning: Received empty response from SonarQube API."
+    if [ -z "$SONAR_TOKEN" ]; then
+      echo "Note: SONAR_TOKEN is not set in the environment. Please export SONAR_TOKEN to authenticate against ${SONAR_URL}."
+    fi
+  else
+    echo "$API_RESP" | python3 -c '
 import sys, json
 
 try:
@@ -82,6 +89,7 @@ try:
 except Exception as e:
     print(f"Failed to parse SonarQube API response: {e}")
 '
+  fi
 
   echo ""
   echo "Please apply the necessary code changes to fix the issues listed above."
