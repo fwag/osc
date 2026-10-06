@@ -49,14 +49,19 @@ if [ "$SCAN_FAILED" -ne 0 ]; then
   echo "Fetching unresolved issues from $SONAR_URL/api/issues/search..."
   echo ""
 
-  # Query SonarQube REST API for open issues and format nicely with python3
+  # Query SonarQube REST API for open issues in the new code period first, fallback to all open issues
   AUTH_HEADER=""
   if [ -n "$SONAR_TOKEN" ]; then
     AUTH_HEADER="-u ${SONAR_TOKEN}:"
   fi
 
-  curl -s -k $AUTH_HEADER "${SONAR_URL}/api/issues/search?componentKeys=${PROJECT_KEY}&resolved=false&ps=30" | \
-    python3 -c '
+  API_RESP=$(curl -s -k $AUTH_HEADER "${SONAR_URL}/api/issues/search?componentKeys=${PROJECT_KEY}&inNewCodePeriod=true&resolved=false&ps=30" || true)
+  TOTAL_ISSUES=$(echo "$API_RESP" | python3 -c 'import sys, json; print(len(json.load(sys.stdin).get("issues", [])))' 2>/dev/null || echo 0)
+  if [ "$TOTAL_ISSUES" -eq 0 ]; then
+    API_RESP=$(curl -s -k $AUTH_HEADER "${SONAR_URL}/api/issues/search?componentKeys=${PROJECT_KEY}&resolved=false&ps=30" || true)
+  fi
+
+  echo "$API_RESP" | python3 -c '
 import sys, json
 
 try:

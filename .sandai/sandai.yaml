@@ -11,6 +11,7 @@ orchestrator:
 # Lifecycle hooks
 hooks:
   after_run:
+    timeout: 180s
     # Runs automated code quality checks and fetches SonarQube feedback
     command: "{ git diff --name-only \"${SANDAI_BASE_COMMIT:-master}\"; git ls-files --others --exclude-standard; } | grep '\\.py$' | sort -u | xargs -r ruff check && bash .sandai/hooks/sonar-check.sh"
     allow_failure: false
