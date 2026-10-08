@@ -31,6 +31,9 @@ hooks:
       - name: sonarqube
         command: bash .sandai/hooks/sonar-check.sh
         timeout: 300s
+      - name: scanoss
+        command: bash .sandai/hooks/scanoss-check.sh
+        timeout: 180s
 
 # Agent specification
 agent:
@@ -116,3 +119,6 @@ sandbox:
       # SonarQube Code Quality & Security (https://cq.opensuse.org/)
       - "cq.opensuse.org"
       - "obs-admin.suse.de"
+
+      # SCANOSS Open Source Inventory & Snippet Matching (https://scanoss.com)
+      - "api.scanoss.com"
