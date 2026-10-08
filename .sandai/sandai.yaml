@@ -120,5 +120,6 @@ sandbox:
       - "cq.opensuse.org"
       - "obs-admin.suse.de"
 
-      # SCANOSS Open Source Inventory & Snippet Matching (https://scanoss.com)
+      # SCANOSS Open Source Inventory & Snippet Matching (https://scanoss.com / https://osskb.org)
+      - "api.osskb.org"
       - "api.scanoss.com"
