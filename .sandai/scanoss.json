@@ -1,0 +1,18 @@
+{
+  "bom": {
+    "remove": [
+      {
+        "purl": "pkg:github/opensuse/osc",
+        "comment": "Upstream openSUSE/osc GitHub repository"
+      },
+      {
+        "purl": "pkg:github/openSUSE/osc",
+        "comment": "Upstream openSUSE/osc GitHub repository (case variation)"
+      },
+      {
+        "purl": "pkg:pypi/build-service-osc",
+        "comment": "Upstream openSUSE/osc PyPI package"
+      }
+    ]
+  }
+}

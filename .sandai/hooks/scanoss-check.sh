@@ -34,8 +34,16 @@ fi
 COUNT=$(wc -l < "$FILE_LIST" | tr -d '[:space:]')
 echo "[SCANOSS] Scanning $COUNT modified file(s) for third-party snippets and license matches..."
 
+# Check for custom settings/whitelist file (.sandai/scanoss.json takes precedence over scanoss.json)
+SETTINGS_ARGS=()
+if [ -f ".sandai/scanoss.json" ]; then
+  SETTINGS_ARGS+=(--settings ".sandai/scanoss.json")
+elif [ -f "scanoss.json" ]; then
+  SETTINGS_ARGS+=(--settings "scanoss.json")
+fi
+
 # Run scanoss on changed files list
-scanoss-py scan --files-from "$FILE_LIST" -o "$SCAN_OUTPUT"
+scanoss-py scan "${SETTINGS_ARGS[@]}" --files-from "$FILE_LIST" -o "$SCAN_OUTPUT"
 
 # Parse scan results and report any snippet matches or copyleft issues
 python3 - "$SCAN_OUTPUT" <<'PY'
