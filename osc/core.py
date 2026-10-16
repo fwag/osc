@@ -1175,7 +1175,7 @@ def makeurl(apiurl: str, path: List[str], query: Optional[dict] = None):
 
     apiurl_scheme, apiurl_netloc, apiurl_path = urlsplit(apiurl)[0:3]
 
-    path = apiurl_path.split("/") + [i.strip("/") for i in path]
+    path = apiurl_path.split("/") + [i.strip("/") for i in path if i]
     path = [quote(i, safe="/:") for i in path]
     path_str = "/".join(path)
 
