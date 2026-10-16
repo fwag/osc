@@ -2,6 +2,7 @@
 
 ## Workflow & Scope Discipline
 - **Strict Scope**: Modify ONLY the specific files requested by the prompt, issue, or guardrail check.
+- **Diff-Scoped Fixes Only**: When resolving linter, formatting, or guardrail failures, fix ONLY errors introduced in lines you modified or added. Do NOT attempt to fix, modernize, or refactor pre-existing errors in legacy code.
 - **Direct Action Over Advice**: When addressing prompts or guardrail failures, directly apply the necessary code edits using your tools. Do NOT output conversational lists of options, suggestions, or instructions for the user to perform manually.
 - **Never Modify .sandai/ or Guardrail Hooks**: NEVER modify, disable, or delete any files under `.sandai/` or any test/guardrail scripts (such as `.sandai/hooks/sonar-check.sh` or `sandai.yaml`). If an environment tool is missing or failing, report the limitation directly; under no circumstances should you edit the hook script or disable checks.
 - **Preserve Project Configuration**: NEVER edit repository build or configuration files (such as `pyproject.toml`, `setup.cfg`, `setup.py`, or `.github/` workflows) unless explicitly requested.
