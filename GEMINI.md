@@ -19,3 +19,6 @@
 - **Mandatory Regression Tests**: For every bug fix or behavioral change, you MUST add or update an automated test under `tests/` (e.g., extending the relevant `tests/test_*.py` file) that reproduces the failure and verifies the fix.
 - **Tests Are Always In-Scope**: Modifying or creating test files under `tests/` is always permitted and strictly required alongside code changes, exempt from single-file scope constraints.
 - **Run Unit Tests**: Validate your fix by running the unit tests (e.g., `python3 -m unittest tests/test_<module>.py`) before concluding your turn to ensure all tests pass and no regressions are introduced.
+- **Permanent In-Tree Tests (Never Delete Tests)**:
+  - NEVER delete, remove, or clean up test files after running them. All tests must remain committed in the repository as permanent regression tests.
+  - Do NOT create standalone or temporary scratch scripts. Always integrate the test directly into the existing test suite by adding a `test_*` method into the relevant `tests/test_*.py` file (e.g., `tests/test_core.py` or `tests/test_commandline.py`).
