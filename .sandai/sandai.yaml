@@ -115,6 +115,9 @@ sandbox:
       # - "proxy.golang.org"
 
 
+      # openSUSE Build Service (for inspection/API queries)
+      - "api.opensuse.org"
+
       # SonarQube Code Quality & Security (https://cq.opensuse.org/)
       - "cq.opensuse.org"
       - "obs-admin.suse.de"

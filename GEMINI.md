@@ -16,9 +16,16 @@
 - Make targeted, surgical changes rather than broad refactorings.
 
 ## Testing & Regression Discipline
-- **Mandatory Regression Tests**: For every bug fix or behavioral change, you MUST add or update an automated test under `tests/` (e.g., extending the relevant `tests/test_*.py` file) that reproduces the failure and verifies the fix.
-- **Tests Are Always In-Scope**: Modifying or creating test files under `tests/` is always permitted and strictly required alongside code changes, exempt from single-file scope constraints.
-- **Run Unit Tests**: Validate your fix by running the unit tests (e.g., `python3 -m unittest tests/test_<module>.py`) before concluding your turn to ensure all tests pass and no regressions are introduced.
-- **Permanent In-Tree Tests (Never Delete Tests)**:
-  - NEVER delete, remove, or clean up test files after running them. All tests must remain committed in the repository as permanent regression tests.
-  - Do NOT create standalone or temporary scratch scripts. Always integrate the test directly into the existing test suite by adding a `test_*` method into the relevant `tests/test_*.py` file (e.g., `tests/test_core.py` or `tests/test_commandline.py`).
+- **Mandatory In-Tree Regression Tests**: Every bug fix or behavioral change MUST include an automated regression test committed to git. A PR without a test change under `tests/` is incomplete.
+- **Always Extend Existing Test Files (No Scratch Files)**:
+  - Do NOT create standalone or temporary test files (e.g., NEVER create files like `tests/test_makeurl.py`, `tests/test_temp.py`, or scratch scripts).
+  - Always locate the existing test file under `tests/` (e.g., `tests/test_core.py`, `tests/test_commandline.py`) and append a new `def test_*` method directly into the existing test class.
+  - Modifying files under `tests/` is always permitted and strictly required alongside code changes.
+- **Self-Contained Offline Tests Only**:
+  - While `api.opensuse.org` is reachable for inspection and verifying API payloads, **ALL automated tests committed to the repository MUST be strictly offline**.
+  - NEVER make live network requests inside automated tests. Tests must remain fast, deterministic, and hermetic.
+  - Use mock objects, fixtures, or test functions directly (e.g., inherit from `OscTestCase` in `tests/common.py` or test `makeurl()` directly with problematic inputs in `TestMakeurl` in `tests/test_core.py`).
+- **NEVER Delete or Revert Tests**:
+  - NEVER delete, remove, revert, or clean up test methods or files after running them.
+  - All test methods written must remain permanently in the repository and be part of the final commit.
+- **Run Unit Tests**: Validate your fix by running the unit tests (e.g., `python3 -m unittest tests/test_<module>.py`) before concluding your turn to verify that both your new test and existing tests pass.
