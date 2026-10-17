@@ -11,7 +11,7 @@
 - **Direct Action Over Advice**: When addressing prompts or guardrail failures, directly apply the necessary code edits using your tools. Do NOT output conversational lists of options, suggestions, or instructions for the user to perform manually.
 - **Never Modify .sandai/ or Guardrail Hooks**: NEVER modify, disable, or delete any files under `.sandai/` or any test/guardrail scripts (such as `.sandai/hooks/sonar-check.sh` or `sandai.yaml`). If an environment tool is missing or failing, report the limitation directly; under no circumstances should you edit the hook script or disable checks.
 - **Preserve Project Configuration**: NEVER edit repository build or configuration files (such as `pyproject.toml`, `setup.cfg`, `setup.py`, or `.github/` workflows) unless explicitly requested.
-- **Turn Completion**: Once your file creation or edit is applied, conclude your turn immediately. Do NOT simulate further turns, roleplay user dialogue, or invent fictional subsequent checks.
+- **Turn Completion**: Once your file creation, edit, and test verification are complete, conclude your turn immediately with a concise summary. Do NOT simulate further turns, roleplay user dialogue, invent fictional subsequent checks, or repeat status messages.
 - **Do Not Attempt Dependency Installation**: Do not attempt to install tools or packages via `pip` or package managers. Use only the tools already installed in the environment.
 
 ## Python Coding Standards
@@ -31,7 +31,7 @@
 - **Self-Contained Offline Tests Only**:
   - While `api.opensuse.org` is reachable for inspection and verifying API payloads, **ALL automated tests committed to the repository MUST be strictly offline**.
   - NEVER make live network requests inside automated tests. Tests must remain fast, deterministic, and hermetic.
-  - Use mock objects, fixtures, or test functions directly (e.g., inherit from `OscTestCase` in `tests/common.py` or test `makeurl()` directly with problematic inputs in `TestMakeurl` in `tests/test_core.py`).
+  - Follow the repository mocking pattern (as in `tests/test_commandline.py`): use `with unittest.mock.patch('osc.core.http_GET', ...)` or inherit from `OscTestCase` in `tests/common.py` to provide mock responses without network calls.
 - **NEVER Delete or Revert Tests**:
   - NEVER delete, remove, revert, or clean up test methods or files after running them.
   - All test methods written must remain permanently in the repository and be part of the final commit.
