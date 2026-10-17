@@ -35,4 +35,5 @@
 - **NEVER Delete or Revert Tests**:
   - NEVER delete, remove, revert, or clean up test methods or files after running them.
   - All test methods written must remain permanently in the repository and be part of the final commit.
+  - If a test file fails due to an uninstalled optional module or environment issue, do NOT revert or delete your test. Instead, mock the missing component with `unittest.mock` or place the test method into a test module that runs cleanly (such as `tests/test_core.py`), ensuring your regression test is always committed.
 - **Run Unit Tests**: Validate your fix by running the unit tests (e.g., `python3 -m unittest tests/test_<module>.py`) before concluding your turn to verify that both your new test and existing tests pass.
