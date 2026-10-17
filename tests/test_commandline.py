@@ -859,5 +859,34 @@ class TestChangeRequestStateCanFail(unittest.TestCase):
                 change_request_state("https://api", "1", "superseded")
 
 
+class TestLsCommand(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix="osc_test")
+        os.chdir(self.tmpdir)
+
+    def tearDown(self):
+        try:
+            shutil.rmtree(self.tmpdir)
+        except OSError:
+            pass
+
+    def test_ls_with_revision_and_linked_package(self):
+        """
+        Tests that `osc ls -R` does not crash when a linked package has no project or package.
+        """
+        with unittest.mock.patch("osc.core.meta_get_filelist", return_value=["_link"]), \
+             unittest.mock.patch("osc.core.show_files_meta", return_value="<linkinfo />"), \
+             unittest.mock.patch("osc.conf.get_config", return_value=None):
+            osc_cmd = OscMainCommand()
+            # Suppress printing to stdout
+            with unittest.mock.patch("sys.stdout"):
+                try:
+                    osc_cmd.main(argv=["ls", "-A", "https://localhost", "-R", "123", "project/package"], run=True)
+                except AttributeError as e:
+                    self.fail(f"`osc ls -R` failed with an AttributeError: {e}")
+                except SystemExit:
+                    pass
+
+
 if __name__ == "__main__":
     unittest.main()
