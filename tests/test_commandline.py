@@ -140,6 +140,32 @@ class TestCommandClasses(unittest.TestCase):
             main.post_parse_args(args)
         self.assertEqual(args.apiurl, "https://localhost")
 
+    def test_do_list_linked_package_with_revision(self):
+        '''Test that osc ls -R works with linked packages.'''
+
+        main = OscMainCommand()
+        main.load_legacy_commands()
+
+        self.write_oscrc_localhost()
+        with unittest.mock.patch.dict(os.environ, {"OSC_CONFIG": self.oscrc}), \
+             unittest.mock.patch('osc.core.meta_get_filelist') as mock_meta_get_filelist, \
+             unittest.mock.patch('osc.core.show_files_meta') as mock_show_files_meta:
+
+            # First call to meta_get_filelist returns a link
+            mock_meta_get_filelist.return_value = ['_link']
+
+            # show_files_meta is called to get link info
+            mock_show_files_meta.return_value = b'<directory rev="123"><linkinfo project="linked_prj" package="linked_pkg" rev="456" /></directory>'
+
+            # Call do_list with a revision
+            args = main.parse_args(['ls', '-R', '276', 'Printing', 'hplip'])
+            main.run(args)
+
+            # The second call to meta_get_filelist should have the revision
+            self.assertEqual(mock_meta_get_filelist.call_count, 2)
+            # The following is a bit of a crude check, but it's the easiest way to check that the revision is passed
+            self.assertEqual(mock_meta_get_filelist.call_args.kwargs['revision'], '456')
+
 
 class TestPopProjectPackageFromArgs(unittest.TestCase):
     def _write_store(self, project=None, package=None):
