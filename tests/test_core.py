@@ -175,6 +175,11 @@ class TestMakeurl(unittest.TestCase):
             self.assertEqual(url, f"https://example.com/api/v1?{encoded_char}={encoded_char}")
 
 
+    def test_path_with_none(self):
+        url = makeurl("https://example.com/api/v1", ["path", None, "to", None, "resource"], {"k1": "v1"})
+        self.assertEqual(url, "https://example.com/api/v1/path/to/resource?k1=v1")
+
+
 class TestBinaryFile(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp(prefix="osc_test_")
