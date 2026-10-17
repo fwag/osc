@@ -228,6 +228,11 @@ class TestBinaryFile(unittest.TestCase):
             f.write(1000 * b"\1")
         self.assertFalse(binary_file(path))
 
+    def test_makeurl_with_none(self):
+        url = makeurl('/foo', ['bar', None, 'baz'])
+        self.assertEqual(url, '/foo/bar/baz')
 
-if __name__ == "__main__":
+
+if __name__ == '__main__':
     unittest.main()
+
