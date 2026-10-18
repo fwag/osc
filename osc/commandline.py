@@ -1128,13 +1128,20 @@ class Osc(cmdln.Cmdln):
                         print('\n'.join(l))
                     if opts.expand or opts.unexpand or not link_seen:
                         break
-                    m = show_files_meta(apiurl, project, package)
-                    li = Linkinfo()
+                    m = show_files_meta(apiurl, project, package, revision=rev, meta=opts.meta, deleted=opts.deleted)
                     root = xml_fromstring(m)
-                    li.read(root.find('linkinfo'))
+                    linkinfo_node = root.find('linkinfo')
+                    if linkinfo_node is None:
+                        break
+                    li = Linkinfo()
+                    li.read(linkinfo_node)
                     if li.haserror():
                         raise oscerr.LinkExpandError(project, package, li.error)
-                    project, package, rev = li.project, li.package, li.rev
+                    project = li.project or project
+                    package = li.package or package
+                    if not project or not package:
+                        break
+                    rev = li.rev
                     if not revision_is_empty(rev):
                         print(f'# -> {project} {package} ({rev})')
                     else:
