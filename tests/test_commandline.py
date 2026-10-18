@@ -1,4 +1,5 @@
 import argparse
+import io
 import os
 import shutil
 import tempfile
@@ -139,6 +140,102 @@ class TestCommandClasses(unittest.TestCase):
             args = main.parse_args(["test-cmd"])
             main.post_parse_args(args)
         self.assertEqual(args.apiurl, "https://localhost")
+
+    def _run_ls_with_mock_get(self, mock_http_GET, *args):
+        self.write_oscrc_localhost()
+        with unittest.mock.patch.dict(os.environ, {"OSC_CONFIG": self.oscrc}):
+            cmd, _ = OscMainCommand.main(run=False)
+            parsed_args = cmd.parse_args(["--no-keyring", "ls", *args])
+            cmd.post_parse_args(parsed_args)
+            fake_out = io.StringIO()
+            with unittest.mock.patch("osc.core.http_GET", side_effect=mock_http_GET), unittest.mock.patch(
+                "sys.stdout", new=fake_out
+            ):
+                cmd.run(parsed_args)
+            return fake_out.getvalue().splitlines()
+
+    def test_do_list_revision_with_link(self):
+        class MockResponse:
+            def __init__(self, text):
+                self.text = text
+
+            def read(self):
+                return self.text.encode("utf-8")
+
+        def mock_http_GET(url):
+            if "source/Printing/hplip?rev=276" in url:
+                return MockResponse(
+                    '<directory name="hplip" rev="276">\n'
+                    '  <linkinfo project="openSUSE:Factory" package="hplip" />\n'
+                    '  <entry name="_link" md5="123" size="10" mtime="100" />\n'
+                    '  <entry name="hplip.spec" md5="456" size="20" mtime="100" />\n'
+                    "</directory>"
+                )
+            if "source/openSUSE:Factory/hplip" in url:
+                return MockResponse(
+                    '<directory name="hplip" rev="500">\n'
+                    '  <entry name="factory.spec" md5="789" size="30" mtime="100" />\n'
+                    "</directory>"
+                )
+            raise ValueError(f"Unexpected url: {url}")
+
+        output = self._run_ls_with_mock_get(mock_http_GET, "-R", "276", "Printing/hplip")
+        self.assertIn("_link", output)
+        self.assertIn("hplip.spec", output)
+        self.assertIn("# -> openSUSE:Factory hplip (latest)", output)
+        self.assertIn("factory.spec", output)
+
+    def test_do_list_revision_with_link_no_linkinfo(self):
+        class MockResponse:
+            def __init__(self, text):
+                self.text = text
+
+            def read(self):
+                return self.text.encode("utf-8")
+
+        def mock_http_GET(url):
+            if "source/Printing/hplip?rev=276" in url:
+                return MockResponse(
+                    '<directory name="hplip" rev="276">\n'
+                    '  <entry name="_link" md5="123" size="10" mtime="100" />\n'
+                    '  <entry name="hplip.spec" md5="456" size="20" mtime="100" />\n'
+                    "</directory>"
+                )
+            raise ValueError(f"Unexpected url: {url}")
+
+        output = self._run_ls_with_mock_get(mock_http_GET, "-R", "276", "Printing/hplip")
+        self.assertIn("_link", output)
+        self.assertIn("hplip.spec", output)
+        self.assertNotIn("# -> None None (latest)", output)
+
+    def test_do_list_revision_with_link_omitted_package(self):
+        class MockResponse:
+            def __init__(self, text):
+                self.text = text
+
+            def read(self):
+                return self.text.encode("utf-8")
+
+        def mock_http_GET(url):
+            if "source/Printing/hplip?rev=276" in url:
+                return MockResponse(
+                    '<directory name="hplip" rev="276">\n'
+                    '  <linkinfo project="openSUSE:Factory" />\n'
+                    '  <entry name="_link" md5="123" size="10" mtime="100" />\n'
+                    '  <entry name="hplip.spec" md5="456" size="20" mtime="100" />\n'
+                    "</directory>"
+                )
+            if "source/openSUSE:Factory/hplip" in url:
+                return MockResponse(
+                    '<directory name="hplip" rev="500">\n'
+                    '  <entry name="factory.spec" md5="789" size="30" mtime="100" />\n'
+                    "</directory>"
+                )
+            raise ValueError(f"Unexpected url: {url}")
+
+        output = self._run_ls_with_mock_get(mock_http_GET, "-R", "276", "Printing/hplip")
+        self.assertIn("# -> openSUSE:Factory hplip (latest)", output)
+        self.assertIn("factory.spec", output)
 
 
 class TestPopProjectPackageFromArgs(unittest.TestCase):
