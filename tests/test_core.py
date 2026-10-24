@@ -174,6 +174,10 @@ class TestMakeurl(unittest.TestCase):
             url = makeurl("https://example.com/api/v1", [], {char: char})
             self.assertEqual(url, f"https://example.com/api/v1?{encoded_char}={encoded_char}")
 
+    def test_path_with_none(self):
+        url = makeurl("https://example.com/api/v1", ["path", None, "resource"])
+        self.assertEqual(url, "https://example.com/api/v1/path/resource")
+
 
 class TestBinaryFile(unittest.TestCase):
     def setUp(self):
