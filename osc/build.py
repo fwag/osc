@@ -9,30 +9,30 @@ import glob
 import os
 import re
 import shutil
-import subprocess
 import sys
 from tempfile import NamedTemporaryFile, mkdtemp
-from typing import List
-from typing import Optional
 from urllib.parse import urlsplit
-from urllib.request import URLError, HTTPError
+from urllib.request import HTTPError, URLError
 from xml.etree import ElementTree as ET
 
-from . import conf
-from . import connection
-from . import core
-from . import oscerr
-from .core import get_buildinfo, meta_exists, get_buildconfig, dgst
-from .core import get_binarylist, get_binary_file, run_external, return_external, raw_input
+from . import conf, connection, core, oscerr
+from .core import (
+    dgst,
+    get_binary_file,
+    get_binarylist,
+    get_buildconfig,
+    get_buildinfo,
+    meta_exists,
+    raw_input,
+    return_external,
+    run_external,
+)
 from .fetch import Fetcher, OscFileGrabber, verify_pacs
 from .meter import create_text_meter
-from .util import cpio
-from .util import archquery, debquery, packagequery, rpmquery
-from .util import repodata
+from .util import archquery, cpio, debquery, packagequery, repodata, rpmquery
 from .util.helper import decode_it
 from .util.models import *
 from .util.xml import xml_parse
-
 
 change_personality = {
     'i686': 'linux32',
@@ -77,15 +77,15 @@ if hostarch == 'parisc':
 
 class BuildType(BaseModel):
     name: str = Field()
-    binary_type: Optional[str] = Field()
-    recipes: List[str] = Field()
-    package_suffix: Optional[str] = Field()
-    binary_packages_paths: List[str] = Field()
-    source_packages_paths: List[str] = Field()
-    prefer_packages_paths: List[str] = Field(default=[])
-    prefer_packages_exclude_paths: List[str] = Field(default=[])
+    binary_type: str | None = Field()
+    recipes: list[str] = Field()
+    package_suffix: str | None = Field()
+    binary_packages_paths: list[str] = Field()
+    source_packages_paths: list[str] = Field()
+    prefer_packages_paths: list[str] = Field(default=[])
+    prefer_packages_exclude_paths: list[str] = Field(default=[])
 
-    def _get_files(self, topdir: str, patterns: List[str]) -> List[str]:
+    def _get_files(self, topdir: str, patterns: list[str]) -> list[str]:
         result = []
         for pattern in patterns:
             path = os.path.join(topdir, pattern.lstrip("/"))
@@ -95,13 +95,13 @@ class BuildType(BaseModel):
                 result.append(i)
         return result
 
-    def get_binaries(self, topdir: str) -> List[str]:
+    def get_binaries(self, topdir: str) -> list[str]:
         return self._get_files(topdir, self.binary_packages_paths)
 
-    def get_sources(self, topdir: str) -> List[str]:
+    def get_sources(self, topdir: str) -> list[str]:
         return self._get_files(topdir, self.source_packages_paths)
 
-    def get_recipes(self, topdir: str) -> List[str]:
+    def get_recipes(self, topdir: str) -> list[str]:
         result = []
         for fn in os.listdir(topdir):
             for pattern in self.recipes:
@@ -111,7 +111,7 @@ class BuildType(BaseModel):
         return result
 
 
-BUILD_TYPES: List[BuildType] = [
+BUILD_TYPES: list[BuildType] = [
     BuildType(
         name="appimage",
         recipes=["appimage.yml"],
@@ -241,7 +241,7 @@ BUILD_TYPES: List[BuildType] = [
 ]
 
 
-def get_build_type(name: str, *, binary_type: Optional[str] = None) -> BuildType:
+def get_build_type(name: str, *, binary_type: str | None = None) -> BuildType:
     for build_type in BUILD_TYPES:
         # compare the binary type only if it's specified in the build_type
         if binary_type and build_type.binary_type:
@@ -261,7 +261,7 @@ def get_build_type_from_recipe_path(recipe_path: str) -> BuildType:
     raise oscerr.OscValueError(f"The specified recipe doesn't match any known build type: {recipe_filename}")
 
 
-def find_build_recipes(topdir: str, build_type: Optional[str] = None) -> List[str]:
+def find_build_recipes(topdir: str, build_type: str | None = None) -> list[str]:
     """
     Return all file names in ``topdir`` that match known build recipes.
     """
@@ -286,7 +286,8 @@ class Buildinfo:
             tree = xml_parse(filename)
         except ET.ParseError:
             print('could not parse the buildinfo:', file=sys.stderr)
-            print(open(filename).read(), file=sys.stderr)
+            with open(filename) as f:
+                print(f.read(), file=sys.stderr)
             sys.exit(1)
 
         root = tree.getroot()
@@ -305,8 +306,8 @@ class Buildinfo:
             sys.stderr.write('\n')
             sys.exit(1)
 
-        if not (apiurl.startswith('https://') or apiurl.startswith('http://')):
-            raise URLError('invalid protocol for the apiurl: \'%s\'' % apiurl)
+        if not apiurl.startswith(('https://', 'http://')):
+            raise URLError(f'invalid protocol for the apiurl: \'{apiurl}\'')
 
         self.buildtype = buildtype
         self.binarytype = binarytype
@@ -335,7 +336,7 @@ class Buildinfo:
             self.enable_cpio = True
             self.downloadurl = conf.config['api_host_options'][apiurl]['downloadurl'] + "/repositories"
             if conf.config['http_debug']:
-                print("⚠️   setting dl_url to %s" % conf.config['api_host_options'][apiurl]['downloadurl'])
+                print(f"⚠️   setting dl_url to {conf.config['api_host_options'][apiurl]['downloadurl']}")
         else:
             self.enable_cpio = True
             self.downloadurl = root.get('downloadurl')
@@ -404,7 +405,7 @@ class Buildinfo:
         # we need to iterate over all deps because if this a
         # kiwi build the same package might appear multiple times
         # NOTE: do not loop and remove items, the second same one would not get catched
-        self.deps = [i for i in self.deps if not i.name == name]
+        self.deps = [i for i in self.deps if i.name != name]
 
 
 class Pac:
@@ -441,8 +442,7 @@ class Pac:
         # this is not the ideal place to check if the package is a localdep or not
         localdep = self.mp['name'] in localpkgs  # and not self.mp['noinstall']
         if not localdep and not (node.get('project') and node.get('repository')):
-            raise oscerr.APIError('incomplete information for package %s, may be caused by a broken project configuration.'
-                                  % self.mp['name'])
+            raise oscerr.APIError(f'incomplete information for package {self.mp['name']}, may be caused by a broken project configuration.')
 
         if not localdep:
             self.mp['extproject'] = node.get('project').replace(':', ':/')
@@ -452,8 +452,7 @@ class Pac:
 
         if pacsuffix == 'deb' and not (self.mp['name'] and self.mp['arch'] and self.mp['version']):
             raise oscerr.APIError(
-                "buildinfo for package %s/%s/%s is incomplete"
-                % (self.mp['name'], self.mp['arch'], self.mp['version']))
+                f"buildinfo for package {self.mp['name']}/{self.mp['arch']}/{self.mp['version']} is incomplete")
 
         self.mp['apiurl'] = apiurl
 
@@ -499,7 +498,7 @@ class Pac:
         self.__dict__.update(self.mp)
 
     def makeurls(self, cachedir, urllist):
-        self.localdir = '%s/%s/%s/%s' % (cachedir, self.project, self.repository, self.repoarch)
+        self.localdir = f'{cachedir}/{self.project}/{self.repository}/{self.repoarch}'
         self.fullfilename = os.path.join(self.localdir, self.canonname)
         self.urllist = [url % self.mp for url in urllist]
 
@@ -507,7 +506,7 @@ class Pac:
         return self.name or ""
 
     def __repr__(self):
-        return "%s" % self.name
+        return f"{self.name}"
 
 
 def get_preinstall_image(apiurl, arch, cache_dir, img_info, offline=False):
@@ -535,19 +534,19 @@ def get_preinstall_image(apiurl, arch, cache_dir, img_info, offline=False):
     img_hdrmd5 = img_info.get('hdrmd5')
     if not img_hdrmd5:
         img_hdrmd5 = img_file
-    cache_path = "%s/%s/%s/%s" % (cache_dir, img_project, img_repository, img_arch)
-    ifile_path = "%s/%s" % (cache_path, img_file)
-    info_file_path = "%s/%s" % (cache_path, info_file)
+    cache_path = f"{cache_dir}/{img_project}/{img_repository}/{img_arch}"
+    ifile_path = f"{cache_path}/{img_file}"
+    info_file_path = f"{cache_path}/{info_file}"
 
     imagefile = ifile_path
-    imagesource = "%s/%s/%s [%s]" % (img_project, img_repository, img_pkg, img_hdrmd5)
+    imagesource = f"{img_project}/{img_repository}/{img_pkg} [{img_hdrmd5}]"
     imageinfo = info_file_path
 
     if not os.path.exists(ifile_path):
         if offline:
             return "", "", "", []
-        url = "%s/build/%s/%s/%s/%s/%s" % (apiurl, img_project, img_repository, img_arch, img_pkg, img_file)
-        print("downloading preinstall image %s" % imagesource)
+        url = f"{apiurl}/build/{img_project}/{img_repository}/{img_arch}/{img_pkg}/{img_file}"
+        print(f"downloading preinstall image {imagesource}")
         if not os.path.exists(cache_path):
             try:
                 os.makedirs(cache_path, mode=0o755)
@@ -565,7 +564,7 @@ def get_preinstall_image(apiurl, arch, cache_dir, img_info, offline=False):
                 # download ok, rename temp file to final file name
                 os.rename(temp_file.name, ifile_path)
             except HTTPError as e:
-                print("Failed to download! ecode:%i reason:%s" % (e.code, e.reason))
+                print(f"Failed to download! ecode:{e.code} reason:{e.reason}")
                 # Clean up temp file if it still exists
                 if os.path.exists(temp_file.name):
                     os.unlink(temp_file.name)
@@ -573,7 +572,7 @@ def get_preinstall_image(apiurl, arch, cache_dir, img_info, offline=False):
 
         # Also download the corresponding .info file
         if not os.path.exists(info_file_path):
-            info_url = "%s/build/%s/%s/%s/%s/%s" % (apiurl, img_project, img_repository, img_arch, img_pkg, info_file)
+            info_url = f"{apiurl}/build/{img_project}/{img_repository}/{img_arch}/{img_pkg}/{info_file}"
             print("downloading preinstall image info file")
             with NamedTemporaryFile(dir=cache_path, delete=False) as temp_file:
                 try:
@@ -581,7 +580,7 @@ def get_preinstall_image(apiurl, arch, cache_dir, img_info, offline=False):
                     # download ok, rename temp file to final file name
                     os.rename(temp_file.name, info_file_path)
                 except HTTPError as e:
-                    print("Failed to download info file! ecode:%i reason:%s" % (e.code, e.reason))
+                    print(f"Failed to download info file! ecode:{e.code} reason:{e.reason}")
                     # Clean up temp file if it still exists
                     if os.path.exists(temp_file.name):
                         os.unlink(temp_file.name)
@@ -589,7 +588,7 @@ def get_preinstall_image(apiurl, arch, cache_dir, img_info, offline=False):
     return (imagefile, imagesource, imageinfo, img_bins)
 
 
-def get_built_files(pacdir, buildtype, *, binary_type: Optional[str] = None) -> Tuple[str, str]:
+def get_built_files(pacdir, buildtype, *, binary_type: str | None = None) -> Tuple[str, str]:
     build_type = get_build_type(buildtype, binary_type=binary_type)
     sources = build_type.get_sources(pacdir)
     binaries = build_type.get_binaries(pacdir)
@@ -704,7 +703,7 @@ def check_trusted_projects(apiurl, projects, interactive=True):
                 is_trusted = True
                 break
         if not is_trusted:
-            print("\nThe build root needs packages from project '%s'." % prj)
+            print(f"\nThe build root needs packages from project '{prj}'.")
             print("Note that malicious packages can compromise the build result or even your system.")
 
             if interactive:
@@ -713,7 +712,7 @@ def check_trusted_projects(apiurl, projects, interactive=True):
                 r = "0"
 
             if r == '1':
-                print("adding '%s' to oscrc: ['%s']['trusted_prj']" % (prj, apiurl))
+                print(f"adding '{prj}' to oscrc: ['{apiurl}']['trusted_prj']")
                 trusted.append(prj)
             elif r != '2':
                 print("Well, goodbye then :-)")
@@ -774,9 +773,7 @@ def calculate_build_root(apihost, prj, pac, repo, arch, user=None):
 def build_as_user(vm_type=None):
     if not conf.config.su_wrapper:
         return True
-    if calculate_build_root_user(vm_type):
-        return True
-    return False
+    return bool(calculate_build_root_user(vm_type))
 
 
 def su_wrapper(cmd):
@@ -808,15 +805,15 @@ def run_build(opts, *args):
 
 
 def create_build_descr_data(
-    build_descr_path: Optional[str],
+    build_descr_path: str | None,
     *,
-    build_type: Optional[str],
-    repo: Optional[str] = None,
-    arch: Optional[str] = None,
-    prefer_pkgs: Optional[List[str]] = None,
-    define: Optional[List[str]] = None,
-    define_with: Optional[List[str]] = None,
-    define_without: Optional[List[str]] = None,
+    build_type: str | None,
+    repo: str | None = None,
+    arch: str | None = None,
+    prefer_pkgs: list[str] | None = None,
+    define: list[str] | None = None,
+    define_with: list[str] | None = None,
+    define_without: list[str] | None = None,
 ):
     if build_descr_path:
         build_descr_path = os.path.abspath(build_descr_path)
@@ -832,13 +829,13 @@ def create_build_descr_data(
 
         # HACK: there's no api to provide custom defines
         # TODO: check if we're working with a spec?
-        defines: List[bytes] = []
+        defines: list[bytes] = []
         for i in define or []:
-            defines.append(f"%define {i}".encode("utf-8"))
+            defines.append(f"%define {i}".encode())
         for i in define_with or []:
-            defines.append(f"%define _with_{i} 1".encode("utf-8"))
+            defines.append(f"%define _with_{i} 1".encode())
         for i in define_without or []:
-            defines.append(f"%define _without_{i} 1".encode("utf-8"))
+            defines.append(f"%define _without_{i} 1".encode())
         if defines:
             build_descr_data = b"\n".join(defines) + b"\n\n" + build_descr_data
 
@@ -903,7 +900,7 @@ def main(apiurl, store, opts, argv):
     build_descr = os.path.abspath(build_descr)
 
     if not os.path.isfile(build_descr):
-        raise oscerr.WrongArgs('Error: build description file named \'%s\' does not exist.' % build_descr)
+        raise oscerr.WrongArgs(f"Error: build description file named '{build_descr}' does not exist.")
 
     build_type_obj = get_build_type_from_recipe_path(build_descr)
     build_type = build_type_obj.name
@@ -923,13 +920,13 @@ def main(apiurl, store, opts, argv):
     if opts.root:
         build_root = opts.root
     if opts.target:
-        buildargs.append('--target=%s' % opts.target)
+        buildargs.append(f'--target={opts.target}')
     if opts.threads:
-        buildargs.append('--threads=%s' % opts.threads)
+        buildargs.append(f'--threads={opts.threads}')
     if opts.jobs:
-        buildargs.append('--jobs=%s' % opts.jobs)
+        buildargs.append(f'--jobs={opts.jobs}')
     elif config['build-jobs'] > 0:
-        buildargs.append('--jobs=%s' % config['build-jobs'])
+        buildargs.append(f'--jobs={config['build-jobs']}')
     if opts.icecream or config['icecream'] != '0':
         if opts.icecream:
             num = opts.icecream
@@ -937,14 +934,14 @@ def main(apiurl, store, opts, argv):
             num = config['icecream']
 
         if int(num) > 0:
-            buildargs.append('--icecream=%s' % num)
+            buildargs.append(f'--icecream={num}')
             xp.append('icecream')
             xp.append('gcc-c++')
     if opts.ccache or config['ccache']:
         buildargs.append('--ccache')
         xp.append('ccache')
     if opts.pkg_ccache:
-        buildargs.append('--pkg-ccache=%s' % opts.pkg_ccache)
+        buildargs.append(f'--pkg-ccache={opts.pkg_ccache}')
         xp.append('ccache')
     if opts.linksources:
         buildargs.append('--linksources')
@@ -954,13 +951,13 @@ def main(apiurl, store, opts, argv):
         buildargs.append('--debug')
     if opts._with:
         for o in opts._with:
-            buildargs.append('--with=%s' % o)
+            buildargs.append(f'--with={o}')
     if opts.without:
         for o in opts.without:
-            buildargs.append('--without=%s' % o)
+            buildargs.append(f'--without={o}')
     if opts.define:
         for o in opts.define:
-            buildargs.append('--define=%s' % o)
+            buildargs.append(f'--define={o}')
     if config['build-uid']:
         build_uid = config['build-uid']
     if opts.build_uid:
@@ -968,9 +965,9 @@ def main(apiurl, store, opts, argv):
     if build_uid:
         buildidre = re.compile('^[0-9]+:[0-9]+$')
         if build_uid == 'caller':
-            buildargs.append('--uid=%s:%s' % (os.getuid(), os.getgid()))
+            buildargs.append(f'--uid={os.getuid()}:{os.getgid()}')
         elif buildidre.match(build_uid):
-            buildargs.append('--uid=%s' % build_uid)
+            buildargs.append(f'--uid={build_uid}')
         else:
             print('Error: build-uid arg must be 2 colon separated numerics: "uid:gid" or "caller"', file=sys.stderr)
             return 1
@@ -994,10 +991,10 @@ def main(apiurl, store, opts, argv):
         else:
             pac = store.package
     if opts.multibuild_package:
-        buildargs.append('--buildflavor=%s' % opts.multibuild_package)
+        buildargs.append(f'--buildflavor={opts.multibuild_package}')
         pac = pac + ":" + opts.multibuild_package
     if opts.verbose_mode:
-        buildargs.append('--verbose=%s' % opts.verbose_mode)
+        buildargs.append(f'--verbose={opts.verbose_mode}')
     if opts.no_timestamps:
         buildargs.append('--no-timestamps')
     if opts.wipe:
@@ -1024,9 +1021,9 @@ def main(apiurl, store, opts, argv):
             raise oscerr.WrongArgs('Error: sccache and ccache can not be enabled at the same time')
         sccache_arg = "--sccache-uri=/var/tmp/osbuild-sccache-{pkgname}.tar"
         if opts.sccache_uri:
-            sccache_arg = '--sccache-uri=%s' % opts.sccache_uri
+            sccache_arg = f'--sccache-uri={opts.sccache_uri}'
         elif config['sccache_uri']:
-            sccache_arg = '--sccache-uri=%s' % config['sccache_uri']
+            sccache_arg = f'--sccache-uri={config['sccache_uri']}'
         # Format the package name.
         sccache_arg = sccache_arg.format(pkgname=pacname)
         buildargs.append(sccache_arg)
@@ -1035,8 +1032,8 @@ def main(apiurl, store, opts, argv):
     # define buildinfo & config local cache
     bi_file = None
     bc_file = None
-    bi_filename = '_buildinfo-%s-%s.xml' % (repo, arch)
-    bc_filename = '_buildconfig-%s-%s' % (repo, arch)
+    bi_filename = f'_buildinfo-{repo}-{arch}.xml'
+    bc_filename = f'_buildconfig-{repo}-{arch}'
     if store is not None and hasattr(store, "cache_get_path"):
         bi_filename = store.cache_get_path(bi_filename, makedirs=True)
         bc_filename = store.cache_get_path(bc_filename, makedirs=True)
@@ -1044,10 +1041,10 @@ def main(apiurl, store, opts, argv):
         bi_filename = os.path.join(os.getcwd(), core.store, bi_filename)
         bc_filename = os.path.join(os.getcwd(), core.store, bc_filename)
     elif not os.access('.', os.W_OK):
-        bi_file = NamedTemporaryFile(prefix=bi_filename)
-        bi_filename = bi_file.name
-        bc_file = NamedTemporaryFile(prefix=bc_filename)
-        bc_filename = bc_file.name
+        with NamedTemporaryFile(prefix=bi_filename) as bi_file:
+            bi_filename = bi_file.name
+        with NamedTemporaryFile(prefix=bc_filename) as bc_file:
+            bc_filename = bc_file.name
     else:
         bi_filename = os.path.abspath(bi_filename)
         bc_filename = os.path.abspath(bc_filename)
@@ -1110,45 +1107,45 @@ def main(apiurl, store, opts, argv):
             raise oscerr.WrongOptions('When using --rsync-{src,dest} both parameters have to be specified.')
         myrsyncsrc = os.path.abspath(os.path.expanduser(os.path.expandvars(opts.rsyncsrc)))
         if not os.path.isdir(myrsyncsrc):
-            raise oscerr.WrongOptions('--rsync-src %s is no valid directory!' % opts.rsyncsrc)
+            raise oscerr.WrongOptions(f'--rsync-src {opts.rsyncsrc} is no valid directory!')
         # can't check destination - its in the target chroot ;) - but we can check for sanity
         myrsyncdest = os.path.expandvars(opts.rsyncdest)
         if not os.path.isabs(myrsyncdest):
-            raise oscerr.WrongOptions('--rsync-dest %s is no absolute path (starting with \'/\')!' % opts.rsyncdest)
+            raise oscerr.WrongOptions(f'--rsync-dest {opts.rsyncdest} is no absolute path (starting with \'/\')!')
         specialcmdopts = ['--rsync-src=' + myrsyncsrc, '--rsync-dest=' + myrsyncdest]
     if opts.overlay:
         myoverlay = os.path.abspath(os.path.expanduser(os.path.expandvars(opts.overlay)))
         if not os.path.isdir(myoverlay):
-            raise oscerr.WrongOptions('--overlay %s is no valid directory!' % opts.overlay)
+            raise oscerr.WrongOptions(f'--overlay {opts.overlay} is no valid directory!')
         specialcmdopts += ['--overlay=' + myoverlay]
 
     try:
         if opts.noinit:
             if not os.path.isfile(bi_filename):
                 raise oscerr.WrongOptions('--noinit is not possible, no local buildinfo file')
-            print('Use local \'%s\' file as buildinfo' % bi_filename)
+            print(f'Use local \'{bi_filename}\' file as buildinfo')
             if not os.path.isfile(bc_filename):
                 raise oscerr.WrongOptions('--noinit is not possible, no local buildconfig file')
-            print('Use local \'%s\' file as buildconfig' % bc_filename)
+            print(f'Use local \'{bc_filename}\' file as buildconfig')
         elif opts.offline:
             if not os.path.isfile(bi_filename):
                 raise oscerr.WrongOptions('--offline is not possible, no local buildinfo file')
-            print('Use local \'%s\' file as buildinfo' % bi_filename)
+            print(f'Use local \'{bi_filename}\' file as buildinfo')
             if not os.path.isfile(bc_filename):
                 raise oscerr.WrongOptions('--offline is not possible, no local buildconfig file')
         else:
-            print('Getting buildconfig from server and store to %s' % bc_filename)
+            print(f'Getting buildconfig from server and store to {bc_filename}')
             bc = get_buildconfig(apiurl, prj, repo)
             if not bc_file:
-                bc_file = open(bc_filename, 'w')
-            bc_file.write(decode_it(bc))
-            bc_file.flush()
+                with open(bc_filename, 'w') as bc_file:
+                    bc_file.write(decode_it(bc))
+                    bc_file.flush()
             if os.path.exists(config.queryconfig_cmd) and not opts.nodebugpackages:
                 debug_pkgs = decode_it(return_external(config.queryconfig_cmd, '--dist', bc_filename, 'substitute', 'obs:cli_debug_packages'))
                 if len(debug_pkgs) > 0:
                     extra_pkgs.extend(debug_pkgs.strip().split(" "))
 
-            print('Getting buildinfo from server and store to %s' % bi_filename)
+            print(f'Getting buildinfo from server and store to {bi_filename}')
             bi_text = decode_it(get_buildinfo(apiurl,
                                               prj,
                                               pac,
@@ -1161,10 +1158,10 @@ def main(apiurl, store, opts, argv):
                 print(bi_text)
                 sys.exit(0)
             if not bi_file:
-                bi_file = open(bi_filename, 'w')
-            # maybe we should check for errors before saving the file
-            bi_file.write(bi_text)
-            bi_file.flush()
+                with open(bi_filename, 'w') as bi_file:
+                    # maybe we should check for errors before saving the file
+                    bi_file.write(bi_text)
+                    bi_file.flush()
             kiwipath = None
             if build_type == 'kiwi':
                 bi = Buildinfo(bi_filename, apiurl, 'kiwi', list(prefer_pkgs.keys()))
@@ -1184,17 +1181,17 @@ def main(apiurl, store, opts, argv):
                     pkg_meta_e = meta_exists(metatype='pkg', path_args=(prj, pac),
                                              template_args=None, create_new=False,
                                              apiurl=apiurl)
-                except:
+                except oscerr.NotFoundError:
                     pass
 
                 if pkg_meta_e:
                     print('ERROR: Either wrong repo/arch as parameter or a parse error of .spec/.dsc/.kiwi file due to syntax error', file=sys.stderr)
                 else:
-                    print('The package \'%s\' does not exist - please '
-                          'rerun with \'--local-package\'' % pac, file=sys.stderr)
+                    print(f'The package \'{pac}\' does not exist - please '
+                          'rerun with \'--local-package\'', file=sys.stderr)
             else:
-                print('The project \'%s\' does not exist - please '
-                      'rerun with \'--alternative-project <alternative_project>\'' % prj, file=sys.stderr)
+                print(f'The project \'{prj}\' does not exist - please '
+                      'rerun with \'--alternative-project <alternative_project>\'', file=sys.stderr)
             sys.exit(1)
         else:
             raise
@@ -1235,11 +1232,10 @@ def main(apiurl, store, opts, argv):
     if vm_type != "emulator" and vm_type != "qemu":
         if bi.hostarch is not None:
             if hostarch != bi.hostarch and bi.hostarch not in can_also_build.get(hostarch, []):
-                print('Error: hostarch \'%s\' is required.' % (bi.hostarch), file=sys.stderr)
+                print(f'Error: hostarch \'{bi.hostarch}\' is required.', file=sys.stderr)
                 return 1
-        elif hostarch != bi.buildarch:
-            if bi.buildarch not in can_also_build.get(hostarch, []):
-                print('WARNING: It is guessed to build on hostarch \'%s\' for \'%s\' via QEMU user emulation.' % (hostarch, bi.buildarch), file=sys.stderr)
+        elif hostarch != bi.buildarch and bi.buildarch not in can_also_build.get(hostarch, []):
+            print(f'WARNING: It is guessed to build on hostarch \'{hostarch}\' for \'{bi.buildarch}\' via QEMU user emulation.', file=sys.stderr)
 
     rpmlist_prefers = []
     if prefer_pkgs:
@@ -1253,7 +1249,7 @@ def main(apiurl, store, opts, argv):
                 # not verified.
                 bi.remove_dep(name)
                 rpmlist_prefers.append((name, path))
-                print(' - %s (%s)' % (name, path))
+                print(f' - {name} ({path})')
 
     print('Updating cache of required packages')
 
@@ -1286,7 +1282,7 @@ def main(apiurl, store, opts, argv):
 
     if not opts.trust_all_projects:
         # implicitly trust the project we are building for
-        check_trusted_projects(apiurl, [i for i in bi.projects.keys() if not i == prj])
+        check_trusted_projects(apiurl, [i for i in bi.projects if i != prj])
 
     imagefile = ""
     imagesource = ""
@@ -1348,16 +1344,16 @@ def main(apiurl, store, opts, argv):
                     data[2] = 'standard'
             elif old_pkg_dir != '' and old_pkg_dir != '_self':
                 a = old_pkg_dir.split('/')
-                for i in range(0, len(a)):
+                for i in range(len(a)):
                     data[i] = a[i]
 
             destdir = os.path.join(cache_dir, data[0], data[2], data[3])
             old_pkg_dir = None
             try:
-                print("Downloading previous build from %s ..." % '/'.join(data))
+                print(f"Downloading previous build from {'/'.join(data)} ...")
                 binaries = get_binarylist(apiurl, data[0], data[2], data[3], package=data[1], verbose=True)
-            except Exception as e:
-                print("Error: failed to get binaries: %s" % str(e))
+            except (HTTPError, URLError) as e:
+                print(f"Error: failed to get binaries: {e}")
                 binaries = []
 
             if binaries:
@@ -1400,7 +1396,7 @@ def main(apiurl, store, opts, argv):
                                 progress_meter=True)
 
         if old_pkg_dir is not None:
-            buildargs.append('--oldpackages=%s' % old_pkg_dir)
+            buildargs.append(f'--oldpackages={old_pkg_dir}')
 
     # Make packages from buildinfo available as repos for kiwi/docker/fissile
     # FIXME: add a new attribute to BuildType and decide based on it
@@ -1490,9 +1486,10 @@ def main(apiurl, store, opts, argv):
         # Is a obsrepositories tag used?
         try:
             tree = xml_parse(build_descr)
-        except:
+        except ET.ParseError:
             print('could not parse the kiwi file:', file=sys.stderr)
-            print(open(build_descr).read(), file=sys.stderr)
+            with open(build_descr) as f:
+                print(f.read(), file=sys.stderr)
             sys.exit(1)
         root = tree.getroot()
 
@@ -1517,7 +1514,8 @@ def main(apiurl, store, opts, argv):
 
             if found_obsrepositories > 0:
                 build_descr = os.getcwd() + '/_service:osc_obsrepositories:' + build_descr.rsplit('/', 1)[-1]
-                tree.write(open(build_descr, 'wb'))
+                with open(build_descr, 'wb') as f:
+                    tree.write(f)
 
         # appliance
         expand_obsrepos = None
@@ -1587,7 +1585,7 @@ def main(apiurl, store, opts, argv):
             else:
                 continue
             if not hdrmd5:
-                print("Error: cannot get hdrmd5 for %s" % i.fullfilename)
+                print(f"Error: cannot get hdrmd5 for {i.fullfilename}")
                 sys.exit(1)
             if hdrmd5 != i.hdrmd5:
                 if conf.config["api_host_options"][apiurl]["disable_hdrmd5_check"]:
@@ -1599,18 +1597,18 @@ def main(apiurl, store, opts, argv):
     print('Writing build configuration')
 
     if build_type in ('kiwi', 'docker', 'podman', 'fissile', 'productcompose'):
-        rpmlist = ['%s %s\n' % (i.name, i.fullfilename) for i in bi.deps if not i.noinstall]
+        rpmlist = [f'{i.name} {i.fullfilename}\n' for i in bi.deps if not i.noinstall]
     else:
         rpmlist = []
         for dep in bi.deps:
             if dep.sysroot:
                 # packages installed in sysroot subdirectory need to get a prefix for init_buildsystem
-                rpmlist.append("sysroot: %s %s\n" % (dep.name, dep.fullfilename))
+                rpmlist.append(f"sysroot: {dep.name} {dep.fullfilename}\n")
             else:
-                rpmlist.append("%s %s\n" % (dep.name, dep.fullfilename))
+                rpmlist.append(f"{dep.name} {dep.fullfilename}\n")
     for i in imagebins:
-        rpmlist.append("%s preinstallimage\n" % i)
-    rpmlist += ["%s %s\n" % (i[0], i[1]) for i in rpmlist_prefers]
+        rpmlist.append(f"{i} preinstallimage\n")
+    rpmlist += [f"{i[0]} {i[1]}\n" for i in rpmlist_prefers]
 
     if imagefile:
         rpmlist.append(f"preinstallimage: {imagefile}\n")
@@ -1628,10 +1626,10 @@ def main(apiurl, store, opts, argv):
         if bi.installonly_list:
             rpmlist.append('installonly: ' + ' '.join(bi.installonly_list) + '\n')
 
-    rpmlist_file = NamedTemporaryFile(mode='w+t', prefix='rpmlist.')
-    rpmlist_filename = rpmlist_file.name
-    rpmlist_file.writelines(rpmlist)
-    rpmlist_file.flush()
+    with NamedTemporaryFile(mode='w+t', prefix='rpmlist.') as rpmlist_file:
+        rpmlist_filename = rpmlist_file.name
+        rpmlist_file.writelines(rpmlist)
+        rpmlist_file.flush()
 
     subst = {'repo': repo, 'arch': arch, 'project': prj, 'package': pacname}
     vm_options = []
@@ -1666,7 +1664,8 @@ def main(apiurl, store, opts, argv):
                 if config['build-initrd']:
                     vm_options += [f"--vm-initrd={config['build-initrd']}"]
 
-            build_root += '/.mount'
+            if vm_type != 'podman':
+                build_root += '/.mount'
         if vm_disk_size:
             vm_options += [f"--vmdisk-rootsize={vm_disk_size}"]
 
@@ -1715,11 +1714,11 @@ def main(apiurl, store, opts, argv):
             print("  - add '--clean' option to your 'osc build' command")
             print("  - run 'osc wipe [--vm-type=...]' prior running your 'osc build' command again")
             sys.exit(rc)
-    except KeyboardInterrupt as keyboard_interrupt_exception:
+    except KeyboardInterrupt:
         print("keyboard interrupt, killing build ...")
         cmd.append('--kill')
         run_external(cmd[0], *cmd[1:])
-        raise keyboard_interrupt_exception
+        raise
 
     pacdir = os.path.join(build_root, '.build.packages')
     if os.path.islink(pacdir):
