@@ -1135,6 +1135,8 @@ class Osc(cmdln.Cmdln):
                     if li.haserror():
                         raise oscerr.LinkExpandError(project, package, li.error)
                     project, package, rev = li.project, li.package, li.rev
+                    if project is None and package is None:
+                        break
                     if not revision_is_empty(rev):
                         print(f'# -> {project} {package} ({rev})')
                     else:
